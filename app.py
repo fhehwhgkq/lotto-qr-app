@@ -8,7 +8,7 @@ from PIL import Image
 import streamlit as st
 
 st.set_page_config(
-    page_title="로또 QR 생성기",
+    page_title="Lotto QR Generator",
     page_icon="🎱",
     layout="centered",
     initial_sidebar_state="collapsed"
@@ -111,24 +111,24 @@ def generate_qr_image(data, box_size=8, border=2):
     return img
 
 def main():
-    st.title("🎱 로또 QR 생성기")
-    st.markdown("**엑셀/텍스트/PDF** 파일을 업로드하면 **동행복권 인식 가능한 QR**을 만들어줘요!")
+    st.title("Lotto QR Generator")
+    st.markdown("Upload Excel/Text/PDF file to generate Lotto QR codes!")
     
     uploaded_file = st.file_uploader(
-        "📁 파일 선택",
+        "Choose a file",
         type=["xlsx", "xls", "txt", "pdf"],
-        help="로또 번호가 있는 파일을 올려주세요"
+        help="Upload file containing lotto numbers"
     )
     
-    draw_number = st.text_input("📅 회차 입력 (필수)", placeholder="예: 1211", value="1211")
+    draw_number = st.text_input("Draw Number (Required)", placeholder="Example: 1211", value="1211")
     
     if not uploaded_file:
-        st.info("👆 위에 파일을 올려주세요")
+        st.info("Please upload a file above")
         return
     
     suffix = uploaded_file.name.split(".")[-1].lower()
     
-    with st.spinner("📖 파일을 읽고 있어요..."):
+    with st.spinner("Reading file..."):
         if suffix in ["xlsx", "xls"]:
             games = parse_excel(uploaded_file)
         elif suffix == "txt":
@@ -137,58 +137,55 @@ def main():
             file_bytes = uploaded_file.read()
             games = parse_pdf(io.BytesIO(file_bytes))
         else:
-            st.error("❌ 지원하지 않는 파일 형식입니다.")
+            st.error("Unsupported file type.")
             return
     
     if not games:
-        st.error("❌ 유효한 로또 번호를 찾지 못했어요 (1~45, 6 개)")
+        st.error("No valid lotto numbers found (1-45, 6 numbers)")
         return
     
-    st.success(f"✅ 총 **{len(games)}게임**을 읽었어요!")
+    st.success(f"Total **{len(games)} games** loaded!")
     
-    with st.expander("📋 번호 미리보기"):
+    with st.expander("Preview Numbers"):
         for i, g in enumerate(games[:10], 1):
-            st.write(f"**{i}게임**: {sorted(g)}")
+            st.write(f"**Game {i}**: {sorted(g)}")
         if len(games) > 10:
-            st.write(f"... 외 {len(games) - 10}게임 더")
+            st.write(f"... and {len(games) - 10} more games")
     
-    st.subheader("📱 QR 코드 (5 게임 단위)")
+    st.subheader("QR Codes (5 games per QR)")
     
     try:
         draw_num = int(draw_number)
     except:
-        st.error("❌ 회차는 숫자로 입력해주세요!")
+        st.error("Please enter draw number as digits!")
         return
     
     for idx, block in enumerate(chunk_games(games, size=5), start=1):
         payload = build_dhlottery_qr_payload(block, draw_num)
         img = generate_qr_image(payload)
         
-        # PIL 이미지를 바이트로 변환
         img_bytes = io.BytesIO()
         img.save(img_bytes, format="PNG")
         img_bytes = img_bytes.getvalue()
         
-        st.markdown(f"**{idx}번째 묶음** ({len(block)}게임)")
+        st.markdown(f"**Batch {idx}** ({len(block)} games)")
         
         game_labels = ['A', 'B', 'C', 'D', 'E']
         for g_idx, nums in enumerate(block, start=1):
             label = game_labels[g_idx-1] if g_idx <= 5 else f"{g_idx}"
-            st.markdown(f"<span class='game-number'>{label}게임: {sorted(nums)}</span>", 
+            st.markdown(f"<span class='game-number'>Game {label}: {sorted(nums)}</span>", 
                        unsafe_allow_html=True)
         
-        # 수정된 st.image 호출 (use_container_width 사용)
         st.image(img_bytes, use_container_width=True)
         
-        with st.expander("🔍 QR 텍스트 확인"):
+        with st.expander("Check QR Text"):
             st.markdown(f"<div class='qr-info'>{payload}</div>", unsafe_allow_html=True)
         
-        # 다운로드
         buf = io.BytesIO()
         img.save(buf, format="PNG")
         buf.seek(0)
         st.download_button(
-            label=f"📥 QR 이미지 다운로드",
+            label="Download QR Image",
             data=buf.getvalue(),
             file_name=f"lotto_qr_{idx}.png",
             mime="image/png",
@@ -197,42 +194,11 @@ def main():
         st.divider()
     
     st.info("""
-    **⚠️ 사용 전 필수 확인사항**
-    1. 생성된 QR 코드는 **동행복권 앱/기계에서 스캔**하여 정상 인식되는지 먼저 테스트하세요.
-    2. 일련번호와 체크섬은 랜덤 생성됩니다. 실제 구매 시에는 문제없으나, 
-       일부 기계에서는 추가 검증이 필요할 수 있습니다.
-    3. **로또 구매 책임은 사용자 본인**에게 있습니다.
+    **Important Notice**
+    1. Test the generated QR code with Donghaeng Lotto app/machine first.
+    2. Serial number and checksum are randomly generated.
+    3. **User is responsible for lotto purchase.**
     """)
 
 if __name__ == "__main__":
     main()
-```
-
----
-
-## 🔧 수정 내용
-
-| 이전 | 수정 후 |
-|------|--------|
-| `st.image(img, use_column_width=True)` | `st.image(img_bytes, use_container_width=True)` |
-| PIL Image 직접 전달 | **바이트로 변환 후 전달** |
-| `buf` 직접 사용 | `buf.getvalue()` 사용 |
-
----
-
-## 📝 GitHub 에서 교체 방법
-
-1. GitHub 에서 `app.py` 파일 열기
-2. 우측 상단 **연필 아이콘 (Edit)** 클릭
-3. **전체 삭제** → **위 코드 전체 붙여넣기**
-4. 초록색 **`Commit changes`** 버튼 클릭
-
----
-
-## 🔄 Streamlit Cloud 재시작
-
-1. Streamlit Cloud 대시보드 (share.streamlit.io) 로 이동
-2. 해당 앱 옆에 **⋮ (점 3 개)** 클릭
-3. **`Restart app`** 선택
-
-이제 정상 작동할 겁니다! 테스트해보시고 결과 알려주세요! 🎱
