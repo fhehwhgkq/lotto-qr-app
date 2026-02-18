@@ -7,7 +7,6 @@ import qrcode
 from PIL import Image
 import streamlit as st
 
-# 모바일 최적화 설정
 st.set_page_config(
     page_title="로또 QR 생성기",
     page_icon="🎱",
@@ -15,7 +14,6 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# CSS 모바일 최적화
 st.markdown("""
 <style>
     .stButton > button {
@@ -43,7 +41,6 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# 유틸: 번호 추출
 def parse_numbers_from_line(line):
     nums = re.findall(r'\d+', line)
     nums = [int(n) for n in nums if 1 <= int(n) <= 45]
@@ -51,7 +48,6 @@ def parse_numbers_from_line(line):
         return nums[:6]
     return None
 
-# 엑셀 파싱
 def parse_excel(file):
     df = pd.read_excel(file, header=None)
     games = []
@@ -63,7 +59,6 @@ def parse_excel(file):
                 games.append(nums)
     return games
 
-# 텍스트 파싱
 def parse_text(file):
     content = file.read().decode("utf-8", errors="ignore")
     lines = content.splitlines()
@@ -74,7 +69,6 @@ def parse_text(file):
             games.append(nums)
     return games
 
-# PDF 파싱
 def parse_pdf(file):
     games = []
     with pdfplumber.open(file) as pdf:
@@ -87,30 +81,23 @@ def parse_pdf(file):
                     games.append(nums)
     return games
 
-# 5 게임 단위 묶기
 def chunk_games(games, size=5):
     for i in range(0, len(games), size):
         yield games[i:i+size]
 
-# 동행복권 실제 QR 포맷 생성
 def build_dhlottery_qr_payload(games_block, draw_number):
     draw_str = str(draw_number).zfill(4)
-    
     games_str = []
     for nums in games_block:
         nums_sorted = sorted(nums)
         game_str = "".join(str(n).zfill(2) for n in nums_sorted)
         games_str.append(game_str)
-    
     games_part = "m".join(games_str)
     serial = "".join([str(random.randint(0, 9)) for _ in range(10)])
     checksum = "".join([str(random.randint(0, 9)) for _ in range(8)])
-    
     url = f"http://qr.dhlottery.co.kr/?v={draw_str}{games_part}{serial}{checksum}"
-    
     return url
 
-# QR 이미지 생성
 def generate_qr_image(data, box_size=8, border=2):
     qr = qrcode.QRCode(
         version=None,
@@ -123,7 +110,6 @@ def generate_qr_image(data, box_size=8, border=2):
     img = qr.make_image(fill_color="black", back_color="white")
     return img
 
-# 메인 앱
 def main():
     st.title("🎱 로또 QR 생성기")
     st.markdown("**엑셀/텍스트/PDF** 파일을 업로드하면 **동행복권 인식 가능한 QR**을 만들어줘요!")
@@ -178,6 +164,11 @@ def main():
         payload = build_dhlottery_qr_payload(block, draw_num)
         img = generate_qr_image(payload)
         
+        # PIL 이미지를 바이트로 변환
+        img_bytes = io.BytesIO()
+        img.save(img_bytes, format="PNG")
+        img_bytes = img_bytes.getvalue()
+        
         st.markdown(f"**{idx}번째 묶음** ({len(block)}게임)")
         
         game_labels = ['A', 'B', 'C', 'D', 'E']
@@ -186,17 +177,19 @@ def main():
             st.markdown(f"<span class='game-number'>{label}게임: {sorted(nums)}</span>", 
                        unsafe_allow_html=True)
         
-        st.image(img, use_column_width=True)
+        # 수정된 st.image 호출 (use_container_width 사용)
+        st.image(img_bytes, use_container_width=True)
         
         with st.expander("🔍 QR 텍스트 확인"):
             st.markdown(f"<div class='qr-info'>{payload}</div>", unsafe_allow_html=True)
         
+        # 다운로드
         buf = io.BytesIO()
         img.save(buf, format="PNG")
         buf.seek(0)
         st.download_button(
             label=f"📥 QR 이미지 다운로드",
-            data=buf,
+            data=buf.getvalue(),
             file_name=f"lotto_qr_{idx}.png",
             mime="image/png",
         )
@@ -213,3 +206,33 @@ def main():
 
 if __name__ == "__main__":
     main()
+```
+
+---
+
+## 🔧 수정 내용
+
+| 이전 | 수정 후 |
+|------|--------|
+| `st.image(img, use_column_width=True)` | `st.image(img_bytes, use_container_width=True)` |
+| PIL Image 직접 전달 | **바이트로 변환 후 전달** |
+| `buf` 직접 사용 | `buf.getvalue()` 사용 |
+
+---
+
+## 📝 GitHub 에서 교체 방법
+
+1. GitHub 에서 `app.py` 파일 열기
+2. 우측 상단 **연필 아이콘 (Edit)** 클릭
+3. **전체 삭제** → **위 코드 전체 붙여넣기**
+4. 초록색 **`Commit changes`** 버튼 클릭
+
+---
+
+## 🔄 Streamlit Cloud 재시작
+
+1. Streamlit Cloud 대시보드 (share.streamlit.io) 로 이동
+2. 해당 앱 옆에 **⋮ (점 3 개)** 클릭
+3. **`Restart app`** 선택
+
+이제 정상 작동할 겁니다! 테스트해보시고 결과 알려주세요! 🎱
