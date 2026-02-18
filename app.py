@@ -7,6 +7,7 @@ import pdfplumber
 import qrcode
 from PIL import Image
 import streamlit as st
+from datetime import datetime, timedelta
 
 st.set_page_config(
     page_title="Lotto QR Generator",
@@ -34,12 +35,45 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
+# ===== 로또 회차 자동 계산 함수 =====
+def get_current_lotto_round():
+    """
+    현재 날짜 기준으로 로또 회차 자동 계산
+    1 회: 2002 년 12 월 7 일 (토요일) 기준
+    """
+    first_draw = datetime(2002, 12, 7)  # 1 회 추첨일
+    today = datetime.now()
+    
+    # 경과 일수 계산
+    days_diff = (today - first_draw).days
+    
+    # 주 단위 계산 (7 일마다 1 회)
+    weeks_passed = days_diff // 7
+    
+    # 현재 회차 (1 회 + 경과 주수)
+    current_round = 1 + weeks_passed
+    
+    # 다음 추첨일 (다음 토요일)
+    days_until_saturday = (5 - today.weekday() + 7) % 7
+    if days_until_saturday == 0 and today.hour >= 20:
+        # 토요일 오후 8 시 이후면 다음 회차
+        current_round += 1
+        days_until_saturday = 7
+    
+    next_draw = today + timedelta(days=days_until_saturday)
+    
+    return current_round, next_draw.strftime("%m/%d")
+
+# ===== 언어 설정 =====
+current_round, next_draw_date = get_current_lotto_round()
+
 LANG = {
     "Korean": {
         "title": "🎱 로또 QR 생성기",
         "header_info": "생성된 QR 을 복권방 기계나 동행복권 앱으로 스캔하세요.",
         "file_label": "파일 업로드 (엑셀, 텍스트, PDF)",
-        "draw_label": "회차 번호 (기본값: 1211)",
+        "draw_label": f"회차 번호 (다음추첨: {next_draw_date})",
+        "default_round": str(current_round),
         "err_type": "지원하지 않는 파일 형식입니다.",
         "err_no_num": "유효한 로또 번호 (1~45, 6 개) 를 찾을 수 없습니다.",
         "success": "총 {} 게임이 로드되었습니다.",
@@ -54,7 +88,8 @@ LANG = {
         "title": "🎱 Lotto QR Generator",
         "header_info": "Scan the generated QR with the lottery machine or app.",
         "file_label": "Upload File (Excel, Text, PDF)",
-        "draw_label": "Draw Number (Default: 1211)",
+        "draw_label": f"Draw Number (Next: {next_draw_date})",
+        "default_round": str(current_round),
         "err_type": "Unsupported file type",
         "err_no_num": "No valid lotto numbers found.",
         "success": "Total {} games loaded.",
@@ -67,6 +102,7 @@ LANG = {
     }
 }
 
+# ===== 유틸리티 함수들 =====
 def parse_numbers_from_line(line):
     nums = re.findall(r'\d+', line)
     nums = [int(n) for n in nums if 1 <= int(n) <= 45]
@@ -134,6 +170,7 @@ def generate_qr_image(data, box_size=8, border=2):
     img = qr.make_image(fill_color="black", back_color="white")
     return img
 
+# ===== 메인 앱 =====
 def main():
     lang_choice = st.radio(
         "Language / 언어",
@@ -150,7 +187,11 @@ def main():
         type=["xlsx", "xls", "txt", "pdf"]
     )
     
-    draw_number = st.text_input(txt["draw_label"], value="1211")
+    # 자동 계산된 회차번호가 기본값으로 표시
+    draw_number = st.text_input(
+        txt["draw_label"], 
+        value=txt["default_round"]
+    )
     
     if not uploaded_file:
         return
