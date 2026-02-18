@@ -19,7 +19,7 @@ st.set_page_config(
 LANG = {
     "Korean": {
         "title": "🎱 로또 QR 생성기",
-        "select_lang": "언어 선택 (Language)",
+        "header_info": "생성된 QR을 복권방 기계나 동행복권 앱으로 스캔하세요.",
         "file_label": "파일 업로드 (엑셀, 텍스트, PDF)",
         "draw_label": "회차 번호 (기본값: 1211)",
         "err_type": "지원하지 않는 파일 형식입니다.",
@@ -28,12 +28,11 @@ LANG = {
         "err_digit": "회차 번호는 숫자만 입력해주세요.",
         "batch": "묶음 {} ({}게임)",
         "game": "게임 {}",
-        "download": "QR 이미지 다운로드",
-        "header_info": "생성된 QR을 동행복권 단말기나 앱으로 스캔하세요."
+        "download": "QR 이미지 다운로드"
     },
     "English": {
         "title": "🎱 Lotto QR Generator",
-        "select_lang": "Select Language",
+        "header_info": "Scan the generated QR with the lottery machine or app.",
         "file_label": "Upload File (Excel, Text, PDF)",
         "draw_label": "Draw Number (Default: 1211)",
         "err_type": "Unsupported file type",
@@ -42,8 +41,7 @@ LANG = {
         "err_digit": "Please enter draw number as digits.",
         "batch": "Batch {} ({} games)",
         "game": "Game {}",
-        "download": "Download QR Image",
-        "header_info": "Scan the generated QR with the lottery machine or app."
+        "download": "Download QR Image"
     }
 }
 
@@ -93,22 +91,14 @@ def chunk_games(games, size=5):
         yield games[i:i+size]
 
 def build_dhlottery_qr_payload(games_block, draw_number):
-    # 동행복권 포맷: http://qr.dhlottery.co.kr/?v={회차}m{게임1}m{게임2}...{고유번호}
-    # 반드시 각 게임 앞에 'm'이 붙어야 함
     draw_str = str(draw_number).zfill(4)
-    
     url = f"http://qr.dhlottery.co.kr/?v={draw_str}"
-    
     for nums in games_block:
         nums_sorted = sorted(nums)
         game_str = "".join(str(n).zfill(2) for n in nums_sorted)
         url += f"m{game_str}"
-        
-    # 뒷부분 고유번호 (랜덤 생성 18자리)
-    # 실제로는 시리얼+체크섬이지만, 구매용 스캔시에는 랜덤이어도 인식됨
     random_suffix = "".join([str(random.randint(0, 9)) for _ in range(18)])
     url += random_suffix
-    
     return url
 
 def generate_qr_image(data, box_size=8, border=2):
@@ -125,18 +115,18 @@ def generate_qr_image(data, box_size=8, border=2):
 
 # ===== 메인 앱 =====
 def main():
-    # 언어 선택 (기본값: Korean)
-    lang_code = st.radio(
+    # 언어 선택 라디오 버튼
+    lang_choice = st.radio(
         "Language / 언어",
         ("Korean", "English"),
-        horizontal=True,
-        label_visibility="collapsed"
+        horizontal=True
     )
     
-    txt = LANG[lang_code] # 선택된 언어 텍스트 로드
+    # 선택된 언어 텍스트 가져오기
+    txt = LANG[lang_choice]
 
     st.title(txt["title"])
-    st.caption(txt["header_info"])
+    st.info(txt["header_info"])
     
     uploaded_file = st.file_uploader(
         txt["file_label"],
@@ -182,28 +172,24 @@ def main():
         payload = build_dhlottery_qr_payload(block, draw_num)
         img = generate_qr_image(payload)
         
-        # 이미지 바이트 변환
-        img_bytes = io.BytesIO()
-        img.save(img_bytes, format="PNG")
-        img_data = img_bytes.getvalue()
+        # 이미지 데이터 생성
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        img_bytes = buf.getvalue()
         
-        # 화면 표시
         st.markdown(f"**{txt['batch'].format(idx, len(block))}**")
         
-        # 번호 텍스트 표시
         for g_idx, nums in enumerate(block, start=1):
             st.write(f"{txt['game'].format(g_idx)}: {sorted(nums)}")
         
-        # QR 이미지 표시
-        st.image(img_data, use_container_width=True)
+        # Streamlit 이미지 표시 (use_container_width 사용)
+        st.image(img_bytes, use_container_width=True)
         
-        # 다운로드 버튼
-        buf = io.BytesIO()
-        img.save(buf, format="PNG")
+        # 다운로드 버튼 (버퍼 리셋 후 사용)
         buf.seek(0)
         st.download_button(
             label=txt["download"],
-            data=buf.getvalue(),
+            data=buf,
             file_name=f"lotto_qr_{draw_num}_{idx}.png",
             mime="image/png",
         )
