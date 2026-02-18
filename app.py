@@ -35,44 +35,50 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# ===== 로또 회차 자동 계산 함수 =====
-def get_current_lotto_round():
+# ===== 로또 회차 자동 계산 함수 (판매 마감 시간 반영) =====
+def get_purchasable_lotto_round():
     """
-    현재 날짜 기준으로 로또 회차 자동 계산
+    현재 날짜/시간 기준으로 구매 가능한 로또 회차 계산
     1 회: 2002 년 12 월 7 일 (토요일) 기준
+    판매 마감: 토요일 20:20
     """
     first_draw = datetime(2002, 12, 7)  # 1 회 추첨일
-    today = datetime.now()
+    now = datetime.now()
     
     # 경과 일수 계산
-    days_diff = (today - first_draw).days
-    
-    # 주 단위 계산 (7 일마다 1 회)
+    days_diff = (now - first_draw).days
     weeks_passed = days_diff // 7
     
-    # 현재 회차 (1 회 + 경과 주수)
-    current_round = 1 + weeks_passed
+    # 기본 회차
+    base_round = 1 + weeks_passed
     
-    # 다음 추첨일 (다음 토요일)
-    days_until_saturday = (5 - today.weekday() + 7) % 7
-    if days_until_saturday == 0 and today.hour >= 20:
-        # 토요일 오후 8 시 이후면 다음 회차
-        current_round += 1
-        days_until_saturday = 7
+    # 요일 확인 (월=0, ..., 토=5)
+    weekday = now.weekday()
+    hour = now.hour
+    minute = now.minute
     
-    next_draw = today + timedelta(days=days_until_saturday)
+    # 토요일 20:20 지났는지 확인
+    is_after_cutoff = (weekday == 5 and (hour > 20 or (hour == 20 and minute >= 20)))
     
-    return current_round, next_draw.strftime("%m/%d")
+    if is_after_cutoff:
+        # 마감 후면 다음 회차 구매 가능
+        purchasable_round = base_round + 1
+    else:
+        # 마감 전이면 이번 회차 구매 가능
+        purchasable_round = base_round
+    
+    return purchasable_round
+
+# ===== 회차 계산 실행 =====
+current_round = get_purchasable_lotto_round()
 
 # ===== 언어 설정 =====
-current_round, next_draw_date = get_current_lotto_round()
-
 LANG = {
     "Korean": {
         "title": "🎱 로또 QR 생성기",
         "header_info": "생성된 QR 을 복권방 기계나 동행복권 앱으로 스캔하세요.",
         "file_label": "파일 업로드 (엑셀, 텍스트, PDF)",
-        "draw_label": f"회차 번호 (다음추첨: {next_draw_date})",
+        "draw_label": "회차 번호 (현재 구매가능)",
         "default_round": str(current_round),
         "err_type": "지원하지 않는 파일 형식입니다.",
         "err_no_num": "유효한 로또 번호 (1~45, 6 개) 를 찾을 수 없습니다.",
@@ -88,7 +94,7 @@ LANG = {
         "title": "🎱 Lotto QR Generator",
         "header_info": "Scan the generated QR with the lottery machine or app.",
         "file_label": "Upload File (Excel, Text, PDF)",
-        "draw_label": f"Draw Number (Next: {next_draw_date})",
+        "draw_label": "Draw Number (Purchasable Now)",
         "default_round": str(current_round),
         "err_type": "Unsupported file type",
         "err_no_num": "No valid lotto numbers found.",
