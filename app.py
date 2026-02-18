@@ -8,38 +8,11 @@ from PIL import Image
 import streamlit as st
 
 st.set_page_config(
-    page_title="Lotto QR Generator",
+    page_title="Lotto QR",
     page_icon="🎱",
     layout="centered",
     initial_sidebar_state="collapsed"
 )
-
-st.markdown("""
-<style>
-    .stButton > button {
-        width: 100%;
-        font-size: 16px;
-        padding: 12px;
-    }
-    .stFileUploader {
-        font-size: 14px;
-    }
-    h1 { font-size: 24px; }
-    h2 { font-size: 20px; }
-    .game-number {
-        font-size: 18px;
-        font-weight: bold;
-        color: #1f77b4;
-    }
-    .qr-info {
-        background-color: #f0f2f6;
-        padding: 10px;
-        border-radius: 5px;
-        font-size: 12px;
-        word-break: break-all;
-    }
-</style>
-""", unsafe_allow_html=True)
 
 def parse_numbers_from_line(line):
     nums = re.findall(r'\d+', line)
@@ -112,52 +85,40 @@ def generate_qr_image(data, box_size=8, border=2):
 
 def main():
     st.title("Lotto QR Generator")
-    st.markdown("Upload Excel/Text/PDF file to generate Lotto QR codes!")
     
     uploaded_file = st.file_uploader(
         "Choose a file",
-        type=["xlsx", "xls", "txt", "pdf"],
-        help="Upload file containing lotto numbers"
+        type=["xlsx", "xls", "txt", "pdf"]
     )
     
-    draw_number = st.text_input("Draw Number (Required)", placeholder="Example: 1211", value="1211")
+    draw_number = st.text_input("Draw Number", value="1211")
     
     if not uploaded_file:
-        st.info("Please upload a file above")
         return
     
     suffix = uploaded_file.name.split(".")[-1].lower()
     
-    with st.spinner("Reading file..."):
-        if suffix in ["xlsx", "xls"]:
-            games = parse_excel(uploaded_file)
-        elif suffix == "txt":
-            games = parse_text(uploaded_file)
-        elif suffix == "pdf":
-            file_bytes = uploaded_file.read()
-            games = parse_pdf(io.BytesIO(file_bytes))
-        else:
-            st.error("Unsupported file type.")
-            return
-    
-    if not games:
-        st.error("No valid lotto numbers found (1-45, 6 numbers)")
+    if suffix in ["xlsx", "xls"]:
+        games = parse_excel(uploaded_file)
+    elif suffix == "txt":
+        games = parse_text(uploaded_file)
+    elif suffix == "pdf":
+        file_bytes = uploaded_file.read()
+        games = parse_pdf(io.BytesIO(file_bytes))
+    else:
+        st.error("Unsupported file type")
         return
     
-    st.success(f"Total **{len(games)} games** loaded!")
+    if not games:
+        st.error("No valid lotto numbers found")
+        return
     
-    with st.expander("Preview Numbers"):
-        for i, g in enumerate(games[:10], 1):
-            st.write(f"**Game {i}**: {sorted(g)}")
-        if len(games) > 10:
-            st.write(f"... and {len(games) - 10} more games")
-    
-    st.subheader("QR Codes (5 games per QR)")
+    st.success(f"Total {len(games)} games loaded")
     
     try:
         draw_num = int(draw_number)
     except:
-        st.error("Please enter draw number as digits!")
+        st.error("Please enter draw number as digits")
         return
     
     for idx, block in enumerate(chunk_games(games, size=5), start=1):
@@ -170,35 +131,22 @@ def main():
         
         st.markdown(f"**Batch {idx}** ({len(block)} games)")
         
-        game_labels = ['A', 'B', 'C', 'D', 'E']
         for g_idx, nums in enumerate(block, start=1):
-            label = game_labels[g_idx-1] if g_idx <= 5 else f"{g_idx}"
-            st.markdown(f"<span class='game-number'>Game {label}: {sorted(nums)}</span>", 
-                       unsafe_allow_html=True)
+            st.write(f"Game {g_idx}: {sorted(nums)}")
         
         st.image(img_bytes, use_container_width=True)
-        
-        with st.expander("Check QR Text"):
-            st.markdown(f"<div class='qr-info'>{payload}</div>", unsafe_allow_html=True)
         
         buf = io.BytesIO()
         img.save(buf, format="PNG")
         buf.seek(0)
         st.download_button(
-            label="Download QR Image",
+            label="Download QR",
             data=buf.getvalue(),
             file_name=f"lotto_qr_{idx}.png",
             mime="image/png",
         )
         
         st.divider()
-    
-    st.info("""
-    **Important Notice**
-    1. Test the generated QR code with Donghaeng Lotto app/machine first.
-    2. Serial number and checksum are randomly generated.
-    3. **User is responsible for lotto purchase.**
-    """)
 
 if __name__ == "__main__":
     main()
