@@ -28,7 +28,13 @@ LANG = {
         "err_digit": "회차 번호는 숫자만 입력해주세요.",
         "batch": "묶음 {} ({}게임)",
         "game": "게임 {}",
-        "download": "QR 이미지 다운로드"
+        "download_qr": "QR 이미지 다운로드",
+        "download_csv": "📄 생성 내역 엑셀로 저장 (CSV)",
+        "csv_filename": "로또_QR_생성내역_{}.csv",
+        "col_round": "회차",
+        "col_batch": "묶음번호",
+        "col_nums": "번호",
+        "col_url": "QR코드_내용(URL)"
     },
     "English": {
         "title": "🎱 Lotto QR Generator",
@@ -41,7 +47,13 @@ LANG = {
         "err_digit": "Please enter draw number as digits.",
         "batch": "Batch {} ({} games)",
         "game": "Game {}",
-        "download": "Download QR Image"
+        "download_qr": "Download QR Image",
+        "download_csv": "📄 Download History (CSV)",
+        "csv_filename": "lotto_history_{}.csv",
+        "col_round": "Round",
+        "col_batch": "Batch",
+        "col_nums": "Numbers",
+        "col_url": "QR_Content(URL)"
     }
 }
 
@@ -115,14 +127,12 @@ def generate_qr_image(data, box_size=8, border=2):
 
 # ===== 메인 앱 =====
 def main():
-    # 언어 선택 라디오 버튼
+    # 언어 선택
     lang_choice = st.radio(
         "Language / 언어",
         ("Korean", "English"),
         horizontal=True
     )
-    
-    # 선택된 언어 텍스트 가져오기
     txt = LANG[lang_choice]
 
     st.title(txt["title"])
@@ -167,10 +177,22 @@ def main():
         st.error(txt["err_digit"])
         return
     
-    # QR 생성 및 표시
+    # 데이터 저장을 위한 리스트
+    history_data = []
+
+    # QR 생성 및 표시 루프
     for idx, block in enumerate(chunk_games(games, size=5), start=1):
         payload = build_dhlottery_qr_payload(block, draw_num)
         img = generate_qr_image(payload)
+        
+        # 저장용 데이터 수집
+        nums_str_list = [str(sorted(nums)) for nums in block]
+        history_data.append({
+            txt["col_round"]: draw_num,
+            txt["col_batch"]: idx,
+            txt["col_nums"]: " / ".join(nums_str_list),
+            txt["col_url"]: payload
+        })
         
         # 이미지 데이터 생성
         buf = io.BytesIO()
@@ -182,19 +204,34 @@ def main():
         for g_idx, nums in enumerate(block, start=1):
             st.write(f"{txt['game'].format(g_idx)}: {sorted(nums)}")
         
-        # Streamlit 이미지 표시 (use_container_width 사용)
         st.image(img_bytes, use_container_width=True)
         
-        # 다운로드 버튼 (버퍼 리셋 후 사용)
+        # QR 다운로드 버튼
         buf.seek(0)
         st.download_button(
-            label=txt["download"],
+            label=txt["download_qr"],
             data=buf,
             file_name=f"lotto_qr_{draw_num}_{idx}.png",
             mime="image/png",
+            key=f"btn_{idx}"
         )
         
         st.divider()
+
+    # ===== 전체 내역 CSV 저장 버튼 =====
+    if history_data:
+        st.subheader("💾 저장 (Save)")
+        df = pd.DataFrame(history_data)
+        
+        # 한글 엑셀 깨짐 방지를 위해 utf-8-sig 인코딩 사용
+        csv_buffer = df.to_csv(index=False).encode('utf-8-sig')
+        
+        st.download_button(
+            label=txt["download_csv"],
+            data=csv_buffer,
+            file_name=txt["csv_filename"].format(draw_num),
+            mime="text/csv"
+        )
 
 if __name__ == "__main__":
     main()
