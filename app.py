@@ -1,0 +1,240 @@
+import io
+import re
+import random
+import zipfile  # 압축 기능을 위해 추가
+import pandas as pd
+import pdfplumber
+import qrcode
+from PIL import Image
+import streamlit as st
+
+# 페이지 설정
+st.set_page_config(
+    page_title="Lotto QR Generator",
+    page_icon="🎱",
+    layout="centered",
+    initial_sidebar_state="collapsed"
+)
+
+# ===== 언어 설정 (Dictionary) =====
+LANG = {
+    "Korean": {
+        "title": "🎱 로또 QR 생성기",
+        "header_info": "생성된 QR을 복권방 기계나 동행복권 앱으로 스캔하세요.",
+        "file_label": "파일 업로드 (엑셀, 텍스트, PDF)",
+        "draw_label": "회차 번호 (기본값: 1211)",
+        "err_type": "지원하지 않는 파일 형식입니다.",
+        "err_no_num": "유효한 로또 번호(1~45, 6개)를 찾을 수 없습니다.",
+        "success": "총 {}게임이 로드되었습니다.",
+        "err_digit": "회차 번호는 숫자만 입력해주세요.",
+        "zip_btn": "📦 전체 QR 이미지 한번에 다운로드 (ZIP)",
+        "zip_filename": "로또QR_{}_전체.zip",
+        "batch": "묶음 {} ({}게임)",
+        "game": "게임 {}",
+        "download_qr": "이 QR만 다운로드",
+    },
+    "English": {
+        "title": "🎱 Lotto QR Generator",
+        "header_info": "Scan the generated QR with the lottery machine or app.",
+        "file_label": "Upload File (Excel, Text, PDF)",
+        "draw_label": "Draw Number (Default: 1211)",
+        "err_type": "Unsupported file type",
+        "err_no_num": "No valid lotto numbers found.",
+        "success": "Total {} games loaded.",
+        "err_digit": "Please enter draw number as digits.",
+        "zip_btn": "📦 Download All QR Images (ZIP)",
+        "zip_filename": "LottoQR_{}_All.zip",
+        "batch": "Batch {} ({} games)",
+        "game": "Game {}",
+        "download_qr": "Download This QR",
+    }
+}
+
+# ===== 유틸리티 함수들 =====
+def parse_numbers_from_line(line):
+    nums = re.findall(r'\d+', line)
+    nums = [int(n) for n in nums if 1 <= int(n) <= 45]
+    if len(nums) >= 6:
+        return nums[:6]
+    return None
+
+def parse_excel(file):
+    df = pd.read_excel(file, header=None)
+    games = []
+    for _, row in df.iterrows():
+        nums = [n for n in row.tolist() if pd.notnull(n)]
+        if len(nums) >= 6:
+            nums = [int(n) for n in nums[:6]]
+            if all(1 <= n <= 45 for n in nums):
+                games.append(nums)
+    return games
+
+def parse_text(file):
+    content = file.read().decode("utf-8", errors="ignore")
+    lines = content.splitlines()
+    games = []
+    for line in lines:
+        nums = parse_numbers_from_line(line)
+        if nums:
+            games.append(nums)
+    return games
+
+def parse_pdf(file):
+    games = []
+    with pdfplumber.open(file) as pdf:
+        for page in pdf.pages:
+            text = page.extract_text() or ""
+            lines = text.splitlines()
+            for line in lines:
+                nums = parse_numbers_from_line(line)
+                if nums:
+                    games.append(nums)
+    return games
+
+def chunk_games(games, size=5):
+    for i in range(0, len(games), size):
+        yield games[i:i+size]
+
+def build_dhlottery_qr_payload(games_block, draw_number):
+    draw_str = str(draw_number).zfill(4)
+    url = f"http://qr.dhlottery.co.kr/?v={draw_str}"
+    for nums in games_block:
+        nums_sorted = sorted(nums)
+        game_str = "".join(str(n).zfill(2) for n in nums_sorted)
+        url += f"m{game_str}"
+    random_suffix = "".join([str(random.randint(0, 9)) for _ in range(18)])
+    url += random_suffix
+    return url
+
+def generate_qr_image(data, box_size=8, border=2):
+    qr = qrcode.QRCode(
+        version=None,
+        error_correction=qrcode.constants.ERROR_CORRECT_M,
+        box_size=box_size,
+        border=border,
+    )
+    qr.add_data(data)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white")
+    return img
+
+# ===== 메인 앱 =====
+def main():
+    # 언어 선택
+    lang_choice = st.radio(
+        "Language / 언어",
+        ("Korean", "English"),
+        horizontal=True
+    )
+    txt = LANG[lang_choice]
+
+    st.title(txt["title"])
+    st.info(txt["header_info"])
+    
+    uploaded_file = st.file_uploader(
+        txt["file_label"],
+        type=["xlsx", "xls", "txt", "pdf"]
+    )
+    
+    draw_number = st.text_input(txt["draw_label"], value="1211")
+    
+    if not uploaded_file:
+        return
+    
+    suffix = uploaded_file.name.split(".")[-1].lower()
+    
+    try:
+        if suffix in ["xlsx", "xls"]:
+            games = parse_excel(uploaded_file)
+        elif suffix == "txt":
+            games = parse_text(uploaded_file)
+        elif suffix == "pdf":
+            file_bytes = uploaded_file.read()
+            games = parse_pdf(io.BytesIO(file_bytes))
+        else:
+            st.error(txt["err_type"])
+            return
+    except Exception as e:
+        st.error(f"Error: {e}")
+        return
+    
+    if not games:
+        st.error(txt["err_no_num"])
+        return
+    
+    st.success(txt["success"].format(len(games)))
+    
+    try:
+        draw_num = int(draw_number)
+    except:
+        st.error(txt["err_digit"])
+        return
+    
+    # QR 이미지와 데이터를 미리 생성하여 리스트에 저장
+    qr_data_list = []
+    zip_buffer = io.BytesIO()
+    
+    # ZIP 파일 생성 시작
+    with zipfile.ZipFile(zip_buffer, "w") as zf:
+        for idx, block in enumerate(chunk_games(games, size=5), start=1):
+            payload = build_dhlottery_qr_payload(block, draw_num)
+            img = generate_qr_image(payload)
+            
+            # 이미지 바이트 생성
+            img_byte_arr = io.BytesIO()
+            img.save(img_byte_arr, format="PNG")
+            img_bytes = img_byte_arr.getvalue()
+            
+            # 파일명 생성 (예: Lotto_1211_1.png)
+            filename = f"Lotto_{draw_num}_{idx}.png"
+            
+            # ZIP에 추가
+            zf.writestr(filename, img_bytes)
+            
+            # 화면 표시용 데이터 저장
+            qr_data_list.append({
+                "idx": idx,
+                "block": block,
+                "img_bytes": img_bytes,
+                "filename": filename
+            })
+
+    # ZIP 파일 준비 완료
+    zip_buffer.seek(0)
+    
+    # ===== [상단] 전체 ZIP 다운로드 버튼 =====
+    st.download_button(
+        label=txt["zip_btn"],
+        data=zip_buffer,
+        file_name=txt["zip_filename"].format(draw_num),
+        mime="application/zip",
+        type="primary"  # 강조된 버튼 스타일
+    )
+    
+    st.divider()
+
+    # ===== [하단] 개별 QR 표시 =====
+    for item in qr_data_list:
+        idx = item["idx"]
+        block = item["block"]
+        img_bytes = item["img_bytes"]
+        filename = item["filename"]
+        
+        st.markdown(f"**{txt['batch'].format(idx, len(block))}**")
+        
+        for g_idx, nums in enumerate(block, start=1):
+            st.write(f"{txt['game'].format(g_idx)}: {sorted(nums)}")
+        
+        st.image(img_bytes, use_container_width=True)
+        
+        st.download_button(
+            label=txt["download_qr"],
+            data=img_bytes,
+            file_name=filename,
+            mime="image/png",
+            key=f"btn_{idx}"
+        )
+        st.markdown("---")
+
+if __name__ == "__main__":
+    main()
