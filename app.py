@@ -152,13 +152,13 @@ def build_dhlottery_eslip_payload(games_block, draw_number):
     
     return payload
 
-# ===== QR 이미지 생성 (동행복권 앱과 동일한 스펙) =====
+# ===== QR 이미지 생성 (앱 패턴 최적화) =====
 def generate_qr_image(data):
     qr = qrcode.QRCode(
-        version=7,  # 고정 버전 (앱과 유사한 밀도)
-        error_correction=qrcode.constants.ERROR_CORRECT_M,  # 중간 오류수정
-        box_size=7,  # 모듈 크기
-        border=4,  # 여백 (표준 QR 스펙)
+        version=None,  # 자동 최적 버전
+        error_correction=qrcode.constants.ERROR_CORRECT_L,  # 낮은 오류수정 (더 조밀)
+        box_size=8,
+        border=4,
     )
     qr.add_data(data)
     qr.make(fit=True)
