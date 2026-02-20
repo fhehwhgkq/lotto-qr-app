@@ -4,4 +4,4 @@ openpyxl
 pdfplumber
 qrcode[pil]
 pillow
-opencv-python
+opencv-python-headless 
