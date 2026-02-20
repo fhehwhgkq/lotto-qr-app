@@ -94,7 +94,7 @@ LANG = {
     }
 }
 
-# ===== 유리티 함수들 =====
+# ===== 유틸리티 함수들 =====
 def parse_numbers_from_line(line):
     nums = re.findall(r'\d+', line)
     nums = [int(n) for n in nums if 1 <= int(n) <= 45]
@@ -152,13 +152,13 @@ def build_dhlottery_eslip_payload(games_block, draw_number):
     
     return payload
 
-# ===== QR 이미지 생성 (동행복권 앱 스타일 최적화) =====
+# ===== QR 이미지 생성 (동행복권 앱과 동일한 스펙) =====
 def generate_qr_image(data):
     qr = qrcode.QRCode(
-        version=None,  # 자동 최적 버전
-        error_correction=qrcode.constants.ERROR_CORRECT_L,  # 데이터 용량 최대화
-        box_size=5,  # 모듈 크기 (조밀하게)
-        border=2,  # 여백 (원본과 유사하게)
+        version=7,  # 고정 버전 (앱과 유사한 밀도)
+        error_correction=qrcode.constants.ERROR_CORRECT_M,  # 중간 오류수정
+        box_size=7,  # 모듈 크기
+        border=4,  # 여백 (표준 QR 스펙)
     )
     qr.add_data(data)
     qr.make(fit=True)
