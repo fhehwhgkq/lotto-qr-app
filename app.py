@@ -1,7 +1,8 @@
 import io, re, qrcode, pandas as pd, pdfplumber, streamlit as st
 from datetime import datetime
 from PIL import Image
-from pyzbar.pyzbar import decode
+import cv2
+import numpy as np
 
 # 스트림릿 페이지 설정
 st.set_page_config(page_title="Lotto QR Generator", page_icon="🎱", layout="centered")
@@ -19,12 +20,10 @@ def get_purchasable_lotto_round():
 def parse_numbers(line):
     nums = re.findall(r'\d+', line)
     nums = [int(n) for n in nums if 1 <= int(n) <= 45]
-    # 중복 제거 및 정렬, 6개 이상일 때만 반환
     uniq = sorted(list(set(nums)))
     return uniq[:6] if len(uniq) >= 6 else None
 
 def build_dhlottery_payload(games, draw_num):
-    # 기본 포맷 (기존 코드 스타일 유지)
     games_str = [f"M:{''.join(str(n).zfill(2) for n in sorted(g))}" for g in games]
     return f"MSG_ESLIP{{{draw_num}}}{{({len(games)},{','.join(games_str)})}}"
 
@@ -34,12 +33,19 @@ def generate_qr_from_text(data, error_correction=qrcode.constants.ERROR_CORRECT_
     qr.make(fit=True)
     return qr.make_image(fill_color="black", back_color="white")
 
-def decode_qr_image(pil_img):
-    decoded = decode(pil_img)
-    if not decoded:
+def decode_qr_image_with_cv2(pil_img):
+    # PIL -> OpenCV(BGR) 변환
+    try:
+        arr = np.array(pil_img.convert('RGB'))
+    except Exception:
         return None
-    # 첫 번째 결과의 문자열 반환
-    return decoded[0].data.decode('utf-8')
+    # RGB -> BGR
+    img = arr[:, :, ::-1].copy()
+    detector = cv2.QRCodeDetector()
+    data, pts, straight_qrcode = detector.detectAndDecode(img)
+    if data:
+        return data
+    return None
 
 def load_numbers_from_file(file):
     games = []
@@ -51,7 +57,11 @@ def load_numbers_from_file(file):
             n = parse_numbers(line)
             if n: games.append(n)
     elif fname.endswith("txt"):
-        lines = file.read().decode("utf-8").splitlines()
+        try:
+            lines = file.read().decode("utf-8").splitlines()
+        except Exception:
+            # 다른 인코딩 가능성 대비
+            lines = file.read().decode("cp949", errors="ignore").splitlines()
         for l in lines:
             n = parse_numbers(l)
             if n: games.append(n)
@@ -76,7 +86,7 @@ def main():
         try:
             img = Image.open(app_qr_file).convert("RGB")
             st.image(img, caption="업로드한 앱 QR")
-            qr_text = decode_qr_image(img)
+            qr_text = decode_qr_image_with_cv2(img)
             if qr_text:
                 decoded_payload = qr_text
                 st.success("디코딩 성공. 아래 문자열을 확인하세요.")
@@ -92,7 +102,6 @@ def main():
     draw_num = st.text_input("회차 번호", value=str(get_purchasable_lotto_round()))
     num_file = st.file_uploader("번호 파일 업로드 (Excel, TXT, PDF)", type=["xlsx","xls","txt","pdf"], key="numbers")
 
-    # 사용자가 앱에서 확인한 payload를 직접 붙여넣기 할 수 있도록 옵션 제공
     st.info("앱에서 디코딩한 payload가 있다면 아래 박스에 붙여넣으면 해당 payload 그대로 QR을 생성합니다.")
     override_payload_example = st.text_area("앱에서 확인한 전체 payload 붙여넣기 (선택)", height=80)
 
@@ -102,16 +111,11 @@ def main():
             st.error("유효한 번호(6개)가 포함된 행을 찾지 못했습니다.")
         else:
             st.success(f"총 {len(games)} 게임 로드 완료")
-            # 묶음별 QR 생성 (한 QR에 최대 5게임 예시)
             for i in range(0, len(games), 5):
                 block = games[i:i+5]
                 if override_payload_example.strip():
-                    # 사용자가 붙여넣은 payload를 사용 (주의: 사용자 책임)
                     payload = override_payload_example.strip()
                 elif decoded_payload:
-                    # 앱에서 업로드해 디코딩한 payload가 있고, 그 형식이 게임 배열을 포함한다면
-                    # 사용자가 직접 payload 형식을 분석해 조합해야 함.
-                    # 기본적으로는 decoded_payload를 그대로 사용하도록 선택지를 제공
                     st.write(f"앱에서 디코딩한 payload가 있습니다. 묶음 {i//5+1}에 동일 payload 사용 여부를 선택하세요.")
                     use_decoded = st.checkbox(f"묶음 {i//5+1}에 디코딩된 payload 사용", key=f"use_decoded_{i}")
                     if use_decoded:
@@ -128,7 +132,7 @@ def main():
                 st.image(buf.getvalue(), caption=f"묶음 {i//5 + 1}")
                 st.download_button("QR 다운로드", buf.getvalue(), f"lotto_{draw_num}_{i//5+1}.png", "image/png")
 
-    # 3) 수동 QR 생성 (payload 직접 입력)
+    # 3) 수동 QR 생성
     st.subheader("3) payload 직접 입력 및 QR 생성")
     manual_payload = st.text_area("직접 생성할 payload 입력 (예: MSG_ESLIP{...})", height=120)
     if st.button("직접 생성하고 QR 보기"):
