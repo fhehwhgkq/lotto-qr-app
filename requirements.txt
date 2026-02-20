@@ -3,3 +3,5 @@ pandas
 openpyxl
 pdfplumber
 qrcode[pil]
+pillow
+opencv-python
